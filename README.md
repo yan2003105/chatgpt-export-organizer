@@ -33,3 +33,9 @@ The file is processed only in your browser with JavaScript and is never sent to 
 ## License
 
 MIT, see `LICENSE`.
+
+
+## Versions / 版本
+
+- English: `index.html`
+- 中文版：`index-zh.html`
