@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChatGPT 对话导出整理工具</title>
+<style>
+body{font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;background:#f7f7f5;color:#222;max-width:820px;margin:0 auto;padding:20px}
+h1{font-size:22px} .card{background:#fff;border:1px solid #e5e5e0;border-radius:12px;padding:14px;margin:12px 0}
+button{background:#111;color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer}
+button.ghost{background:#fff;color:#111;border:1px solid #ccc}
+input{width:100%;padding:8px;margin:4px 0;border:1px solid #ddd;border-radius:8px;box-sizing:border-box}
+.msg{border-top:1px solid #eee;padding:10px 0;white-space:pre-wrap;word-break:break-word}
+.role{font-weight:bold;color:#555;font-size:13px} .muted{color:#888;font-size:13px}
+.conv{cursor:pointer}.conv:hover{background:#f0f0ec}
+</style>
+</head>
+<body>
+<h1>ChatGPT 对话导出整理工具</h1>
+<p class="muted">非官方工具，与 OpenAI 无关。你的对话文件只在你自己的浏览器里处理，不上传、不登录、不需要 API Key。请不要在这里粘贴密码或密钥。</p>
+<div class="card">
+<p><b>怎么用：</b>在 ChatGPT 设置里导出你的数据，得到 <code>conversations.json</code> 后，在下面选这个文件；也可以点“载入示例”先看看效果（示例是假对话）。</p>
+<input type="file" id="file" accept=".json,application/json">
+<button onclick="loadSample()">载入示例</button>
+<input id="q" placeholder="搜索标题或对话内容…" oninput="renderList()">
+</div>
+<div id="summary" class="card muted">还没有载入对话。</div>
+<div id="list"></div>
+<div id="detail" class="card" style="display:none"></div>
+<script>
+let convs=[];
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));}
+function parse(data){
+  const arr=Array.isArray(data)?data:(data.conversations||data.items||[]);
+  return arr.map(c=>{
+    let msgs=[];
+    if(c.mapping){
+      msgs=Object.values(c.mapping).filter(n=>n.message&&n.message.content&&n.message.content.parts)
+        .sort((a,b)=>(a.message.create_time||0)-(b.message.create_time||0))
+        .map(n=>({role:n.message.author?n.message.author.role:'unknown',text:n.message.content.parts.filter(p=>typeof p==='string').join('\n')}));
+    } else if(Array.isArray(c.messages)){
+      msgs=c.messages.map(m=>({role:m.role||m.author||'unknown',text:typeof m.content==='string'?m.content:(m.content||[]).join('\n')}));
+    }
+    msgs=msgs.filter(m=>m.text&&m.text.trim());
+    return {title:c.title||'未命名对话',time:c.create_time?new Date(c.create_time*1000).toLocaleDateString():'',msgs};
+  }).filter(c=>c.msgs.length);
+}
+function renderList(){
+  const q=(document.getElementById('q').value||'').toLowerCase();
+  const list=convs.filter(c=>(c.title+' '+c.msgs.map(m=>m.text).join(' ')).toLowerCase().includes(q));
+  document.getElementById('summary').textContent='共载入 '+convs.length+' 条对话'+(q?'，搜索到 '+list.length+' 条':'')+'。';
+  document.getElementById('list').innerHTML=list.map((c,i)=>{
+    const idx=convs.indexOf(c);
+    return '<div class="card conv" onclick="showDetail('+idx+')"><b>'+esc(c.title)+'</b><br><span class="muted">'+esc(c.time)+' · '+c.msgs.length+' 条消息 · 点开查看 / 导出 Markdown</span></div>';
+  }).join('')||'<p class="muted">没有匹配的对话。</p>';
+}
+function showDetail(i){
+  const c=convs[i]; const d=document.getElementById('detail'); d.style.display='block';
+  d.innerHTML='<h3>'+esc(c.title)+'</h3><p class="muted">'+esc(c.time)+' · '+c.msgs.length+' 条消息</p>'
+    +'<button onclick="exportMd('+i+')">导出这条为 Markdown</button> '
+    +'<button class="ghost" onclick="copyMd('+i+')">复制 Markdown</button>'
+    +c.msgs.map(m=>'<div class="msg"><div class="role">'+esc(m.role)+'</div>'+esc(m.text)+'</div>').join('');
+  d.scrollIntoView();
+}
+function toMd(c){
+  return '# '+c.title+'\n\n'+(c.time?'日期：'+c.time+'\n\n':'')
+    +c.msgs.map(m=>'## '+(m.role==='user'?'你':m.role==='assistant'?'ChatGPT':m.role)+'\n\n'+m.text+'\n').join('\n');
+}
+function exportMd(i){
+  const c=convs[i]; const blob=new Blob([toMd(c)],{type:'text/markdown'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=(c.title.replace(/[\\/:*?"<>|]/g,'')||'conversation')+'.md'; a.click();
+}
+function copyMd(i){navigator.clipboard.writeText(toMd(convs[i])).then(()=>alert('已复制到剪贴板'));}
+function loadSample(){
+  convs=parse([{title:'示例对话：怎么给短视频起标题',create_time:1761500000,mapping:{
+    a:{message:{author:{role:'user'},content:{parts:['给一个 15 秒产品短视频起 3 个标题，要抓人但不夸张']},create_time:1}},
+    b:{message:{author:{role:'assistant'},content:{parts:['1. 用了 3 天，我再也不想换回去了\n2. 这个小东西，解决了我一个大麻烦\n3. 别划走，先看最后 3 秒']},create_time:2}}
+  }}]);
+  renderList(); showDetail(0);
+}
+document.getElementById('file').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{try{convs=parse(JSON.parse(r.result));renderList();}catch(err){alert('解析失败：请确认这是 ChatGPT 导出的 conversations.json 文件');}};
+  r.readAsText(f);
+});
+</script>
+</body>
+</html>
